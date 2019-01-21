@@ -7,6 +7,11 @@ extern crate log;
 use asyncio::executor::{block_on, spawn, TcpListener};
 use failure::Error;
 
+// pub enum Poll<T> {
+//     Ready(T),
+//     Pending,
+// }
+
 fn main() -> Result<(), Error> {
     env_logger::init();
     block_on(

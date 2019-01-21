@@ -50,6 +50,7 @@ const fn is_task(token: Token) -> bool {
 
 type PinFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
+// 总的执行器?
 struct Executor {
     poll: Poll,
     main_waker: InnerWaker,
@@ -57,6 +58,7 @@ struct Executor {
     sources: RefCell<Slab<Source>>,
 }
 
+// 内部唤醒机制?
 struct InnerWaker {
     awake_readiness: SetReadiness,
     awake_registration: Registration,
@@ -80,6 +82,8 @@ pub struct TcpListener {
 
 #[derive(Clone)]
 pub struct TcpStream {
+    // RefCell -- 动态临时借用
+    // Rc -- 强引用指针
     inner: Rc<RefCell<net::TcpStream>>,
     source_token: Option<Token>,
     readiness: Ready,
@@ -98,6 +102,7 @@ pub struct StreamWriteState<'a> {
     data: Vec<u8>,
 }
 
+// 为 InnerWaker 实现 UnsafeWake 接口
 unsafe impl UnsafeWake for InnerWaker {
     unsafe fn clone_raw(&self) -> Waker {
         Waker::new(NonNull::from(self))
@@ -139,11 +144,13 @@ impl Executor {
         })
     }
 
+    // NOTE: 这部分在干嘛?
     fn main_waker(&self) -> LocalWaker {
         unsafe { LocalWaker::new(NonNull::from(&self.main_waker)) }
     }
 }
 
+// 线程周期(thread duration)变量
 thread_local! {
     static EXECUTOR: Executor = Executor::new().expect("initializing executor failed!")
 }
@@ -154,10 +161,15 @@ where
     F: Future<Output = R>,
 {
     EXECUTOR.with(move |executor: &Executor| -> Result<R, Error> {
+        // If T does not implement Unpin, then x will be pinned in memory and unable to be moved.
+        // 如果 T 没有实现 Unpin, 那么 x 会被固定在内存中且不可 move
         let mut pinned_task = Box::pin(main_task);
         let mut events = Events::with_capacity(EVENT_CAP);
+        // 该线程的唤醒器
         let main_waker = executor.main_waker();
+
         debug!("main_waker addr: {:p}", &main_waker);
+
         match pinned_task.as_mut().poll(&main_waker) {
             task::Poll::Ready(result) => {
                 debug!("main task complete");
