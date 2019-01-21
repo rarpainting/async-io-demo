@@ -25,6 +25,9 @@ pub fn fs_async() -> (Fs, FsHandler) {
     let poll = Poll::new().unwrap();
     let (registration, set_readiness) = Registration::new2();
     poll.register(&registration, FS_TOKEN, Ready::readable(), PollOpt::oneshot()).unwrap();
+    // 下面两个线程的顺序是:
+    // 调用者 -> task_sender -> io_worker(task_reciver -> result_sender) -> executor(result_reciver)
+    // io_worker: 好像只是封装了 println! 的内容 ? 顺便帮 executor 解决 (String) -> (IO) 的事情
     let io_worker = std::thread::spawn(move || {
         loop {
             match task_receiver.recv() {
@@ -71,6 +74,7 @@ pub fn fs_async() -> (Fs, FsHandler) {
                                 Ok(result) => {
                                     match result {
                                         TaskResult::ReadToString(value, callback, fs) => callback.call_box((value, fs))?,
+
                                         TaskResult::Open(file, callback, fs) => callback.call_box((file, fs))?,
                                         TaskResult::Exit => break 'outer
                                     }

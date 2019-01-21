@@ -4,6 +4,7 @@ use std::io::{Read, Write, self};
 use failure::Error;
 use std::time::{Duration, Instant};
 
+// 只是一个标签用来匹配
 const SERVER_ACCEPT: Token = Token(0);
 const SERVER: Token = Token(1);
 const CLIENT: Token = Token(2);
@@ -29,6 +30,10 @@ fn main() -> Result<(), Error> {
     let mut server_handler = None;
 
 // Register the client
+// 如果我注册时使用 PollOpt::level(),
+//  我在下次 poll 时 一定 还能收到一次 readable readiness event
+//  (只要我没有主动执行 set_readiness(Read::empty()))
+// 如果我注册时使用 PollOpt::edge()，我在下次 poll 时 不一定 还能收到一次 readable readiness event；
     poll.register(&client, CLIENT, Ready::readable() | Ready::writable(),
                   PollOpt::edge())?;
 
@@ -44,6 +49,7 @@ fn main() -> Result<(), Error> {
                 break 'top
             }
             match event.token() {
+                // 有新连接
                 SERVER_ACCEPT => {
                     let (handler, addr) = server.accept()?;
                     println!("accept from addr: {}", &addr);
@@ -51,6 +57,7 @@ fn main() -> Result<(), Error> {
                     server_handler = Some(handler);
                 }
 
+                // 已有连接可用
                 SERVER => {
                     if event.readiness().is_writable() {
                         if let Some(ref mut handler) = &mut server_handler {
@@ -58,6 +65,7 @@ fn main() -> Result<(), Error> {
                                 Ok(_) => {
                                     println!("server wrote");
                                 }
+                                // 只是一种警告, 而没有新的连接
                                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => continue,
                                 err => {
                                     err?;
@@ -81,6 +89,7 @@ fn main() -> Result<(), Error> {
                         }
                     }
                 }
+                // 客户端事件
                 CLIENT => {
                     if event.readiness().is_writable() {
                         match client.write(CLIENT_HELLO) {
